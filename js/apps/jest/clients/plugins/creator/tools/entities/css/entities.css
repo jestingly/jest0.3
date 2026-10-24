@@ -1,0 +1,8 @@
+@layer entities {
+	/*==============================================
+	  Entities Plugin Styling
+	==============================================*/
+	.sidebar-content .tool-entities-nav .toolbar {
+		display           : block;
+	}
+}

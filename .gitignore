@@ -1,0 +1,30 @@
+# -----------------------------------------
+# JEST® - Development Backups and Archives
+# -----------------------------------------
+# Operating system files
+.DS_Store
+
+#Github previous files
+.git-v0.2-backup/
+
+# Miscellaneous loose files
+node_modules/
+dist/
+.env
+apply_copyright.py
+copyright_notice.txt
+
+# Graal resource directories
+webfiles/files/images/misc/
+
+# Local development archives
+*.zip
+
+# Archived development directories
+.workshop/
+archive/
+workshop/
+
+# Superseded build scripts
+build_js_bundle_fixed.py
+build_js_bundle_old1.py
