@@ -551,6 +551,8 @@ console.log( 'jestAlert: js/apps/jest/clients/plugins/creator/tools/marquee/leve
 					//--------------------------------
 					// Only if client is running.
 					if ( mode!=='running' ) return;
+					// Ignore menu updates when this tool is inactive.
+					if ( !tool.enabled() ) return;
 					// Attempt to enable copy/delete buttons.
 					const toolMode	= tool.skim( 'mode' );
 					if ( toolMode==='selected' || toolMode==='floating' ) {
@@ -701,21 +703,20 @@ console.log( 'jestAlert: js/apps/jest/clients/plugins/creator/tools/marquee/leve
 				});
 
 			//-------------------------
-			// Copy/Paste Functionality
+			// Copy/Paste & Delete Functionality
 			//-------------------------
 			// Register marquee copy event.
 			client.register(
 				'copy', subtype,
 				() => {
-					// Block action if app is busy.
-					if ( client.busy() ) return; // app busy‐gate
 					//--------------------------------
 					// Check If Copy Possible
 					//--------------------------------
-					// Get client application mode.
-					const mode	= client.skim( 'mode' );
-					// Only if client is running.
-					if ( mode!=='running' ) return;
+					// Block unavailable application states.
+					if ( client.busy() ) return;
+					if ( client.skim('mode')!=='running' ) return;
+					// Only copy when the marquee tool is active.
+					if ( !tool.enabled() ) return;
 					//--------------------------------
 					// Attempt to Copy
 					//--------------------------------
@@ -727,35 +728,33 @@ console.log( 'jestAlert: js/apps/jest/clients/plugins/creator/tools/marquee/leve
 			client.register(
 				'paste', subtype,
 				( snapshot ) => {
-					// Block action if app is busy.
-					if ( client.busy() ) return; // app busy‐gate
+					// Only handle marquee clipboard data.
+					if ( snapshot?.action!=='levelMarquee' ) return;
 					//--------------------------------
 					// Check If Paste Possible
 					//--------------------------------
-					// Get client application mode.
-					const mode	= client.skim( 'mode' );
-					// Only if client is running.
-					if ( mode!=='running' ) return;
+					// Block unavailable application states.
+					if ( client.busy() ) return;
+					if ( client.skim('mode')!=='running' ) return;
 					//--------------------------------
 					// Attempt to Paste
 					//--------------------------------
 					// Attempt to paste a marquee.
-					client.pasteLevelMarquee( snapshot );
+					client.pasteLevelMarquee( tool, snapshot );
 				});
 
 			// Register event to delete an active selection.
 			client.register(
 				'delete', subtype,
 				() => {
-					// Block action if app is busy.
-					if ( client.busy() ) return; // app busy‐gate
 					//--------------------------------
 					// Check If Delete Possible
 					//--------------------------------
-					// Get client application mode.
-					let mode		= client.skim( 'mode' );
-					// Only if client is running.
-					if ( mode!=='running' ) return;
+					// Block unavailable application states.
+					if ( client.busy() ) return;
+					if ( client.skim('mode')!=='running' ) return;
+					// Only copy when the marquee tool is active.
+					if ( !tool.enabled() ) return;
 					//--------------------------------
 					// Attempt to Delete
 					//--------------------------------
@@ -1791,15 +1790,15 @@ console.log( 'jestAlert: js/apps/jest/clients/plugins/creator/tools/marquee/leve
 				//--------------------------------
 				// Get origin x,y & dimensions from marquee anchor.
 				const { x, y, w, h } = tool.anchor.getBounds(); // extract properties from region
-				const anchor	= tool.anchor.getBounds();
-				const rawRects	= tool.rects?.length ? tool.rects : [ tool.createRect(x,y,w,h,'add') ];
-				const rects		=
+				const anchor		= tool.anchor.getBounds();
+				const rawRects		= tool.rects?.length ? tool.rects : [ tool.createRect(x,y,w,h,'add') ];
+				const rects			=
 					rawRects.map(
 						r => ({
-							x	: r.x - anchor.x,	// normalize relative to anchor
-							y	: r.y - anchor.y,
-							w	: r.w,
-							h	: r.h,
+							x    : r.x - anchor.x,	// normalize relative to anchor
+							y    : r.y - anchor.y,
+							w    : r.w,
+							h    : r.h,
 							type : r.type
 						}));
 				//--------------------------------
@@ -1821,7 +1820,8 @@ console.log( 'jestAlert: js/apps/jest/clients/plugins/creator/tools/marquee/leve
 
 			// Paste contents of a matrix into a marquee.
 			// * snapshot	- [object] With action, region matrix tile data, etc.
-			proto.pasteLevelMarquee = function( snapshot ) {
+			// * tool		- [object] JestToolMarquee emitting the event.
+			proto.pasteLevelMarquee = function( tool, snapshot ) {
 				// Block action if app is busy.
 				if ( this.busy() ) return; // app busy‐gate
 				// Only if this is running.
@@ -1856,8 +1856,7 @@ console.log( 'jestAlert: js/apps/jest/clients/plugins/creator/tools/marquee/leve
 				// Realign mask & bounds
 				//--------------------------------
 				// Ensure click‐inside detection matches the pasted region exactly
-				const tool		= this.toolbox.tools.levelMarquee;	// [object] our marquee tool
-				const { x: ax, y: ay } = tool.anchor.getBounds();	// anchor origin in tile units
+				const { x: ax, y: ay } = tool.anchor.getBounds(); // anchor origin in tile units
 
 				// Build a boolean mask from the actual region.matrix
 				const mask		= snapshot.region.matrix.map( row => row.map(cell=>cell!=null) );

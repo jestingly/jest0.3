@@ -473,9 +473,11 @@ class JestCurator extends JestElement {
 	// Returns the currently selected object (if any).
 	// RETURNS: [JestCuratorObject|null]
 	getSelectedObject() {
-		const id = this.selectBox.getValue();		// current selected ID
-		if ( !id ) return null;						// no selection made
-		return this.objects[id] ?? null;			// return matching object or null
+		// Get current selected object id (if exists).
+		const id = this.selectBox.getValue();	// current selected ID
+		if ( !id ) return null;					// no selection made
+		// If an object is selected, return the object.
+		return this.objects[id] ?? null;		// return matching object or null
 	}
 
 	//--------------------------------

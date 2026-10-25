@@ -179,6 +179,13 @@ class JestToolEntities extends JestTool {
 		if ( this.skim('mode')==='dragging' ) return;
 		if ( e.button!==0 ) return;
 		//--------------------------------
+		// Check Keyboard Modifiers
+		//--------------------------------
+		// Determine if shift key is pressed.
+		const add		= e.shiftKey;
+		// Check for alt/option key.
+		const sub		= e.altKey;
+		//--------------------------------
 		// Calculate Mouse Position
 		//--------------------------------
 		const mouse		= this.target.mousePos( e );
@@ -315,16 +322,22 @@ class JestToolEntities extends JestTool {
 	// * e		- [MouseEvent] mouse event
 	// * object	- [JestCuratorObject] entity to select
 	select( e=null, object=null ) {
+		//--------------------------------
+		// Require Valid Item to Select
+		//--------------------------------
 		// Object must be set.
 		if ( !object ) return false;
 		//--------------------------------
 		// Store Selection
 		//--------------------------------
+		// Store item as selected.
 		this.selected	= object;
+		// Change mode to selected.
 		this.jot( 'mode', 'selected' );
 		//--------------------------------
 		// Emit Selection Event
 		//--------------------------------
+		// Emit a new selected item event.
 		this.emit( 'selected', null, object );
 		this.updateCursor( e ); // update cursor
 		return true;
@@ -333,14 +346,26 @@ class JestToolEntities extends JestTool {
 	// Clear the current entity selection.
 	// RETURNS: [void].
 	deselect() {
+		//--------------------------------
+		// Mode Gatekeep
+		//--------------------------------
 		// Do not interrupt an active drag.
 		if ( this.skim('mode')==='dragging' ) return;
 		const previous = this.selected;
+
+		//--------------------------------
+		// Clear Selection
+		//--------------------------------
 		// Clear selection.
 		this.selected = null;
+
+		//--------------------------------
+		// Switch Mode & Emit Event
+		//--------------------------------
+		// Switch mode to empty.
 		this.jot( 'mode', 'empty' );
 		// Notify plugin.
-		if ( previous )
+		if ( previous ) // if deselecting, emit event
 			this.emit( 'deselected', null, previous );
 	}
 
@@ -385,14 +410,14 @@ class JestToolEntities extends JestTool {
 		//--------------------------------
 		// Add Event Listeners
 		//--------------------------------
+		// Add a listener for when the mouse moves.
 		this.target.register(
 			'mousemove', 'entityDragging',
-			e=>this.dragEntity(e), 'window'
-			);
+			e=>this.dragEntity(e), 'window' );
+		// Add a listener for all mouse-up event(s).
 		this.target.register(
 			jsos.mouseUps, 'entityDragged',
-			e=>this.endDragEntity(e), 'window'
-			);
+			e=>this.endDragEntity(e), 'window' );
 
 		//--------------------------------
 		// Emit Drag Start
@@ -427,8 +452,10 @@ class JestToolEntities extends JestTool {
 		//--------------------------------
 		// Apply Axis Lock
 		//--------------------------------
+		// Get keyboard modifiers.
+		const mod	= this.getModifiers( e );
 		// Shift locks movement to the dominant axis.
-		if ( e.shiftKey ) {
+		if ( mod.shift ) {
 			const dx	= Math.abs( x-this.dragStartX );
 			const dy	= Math.abs( y-this.dragStartY );
 			if ( dx>dy )
@@ -473,6 +500,7 @@ class JestToolEntities extends JestTool {
 		//--------------------------------
 		// Remove Event Listeners
 		//--------------------------------
+		// Cleanup listener(s).
 		this.target.unregister( 'mousemove', 'entityDragging' );
 		this.removeGlobalListeners();
 		//--------------------------------
@@ -495,6 +523,20 @@ class JestToolEntities extends JestTool {
 		this.dragStartX	= null;
 		this.dragStartY	= null;
 		this.updateCursor( e ); // update cursor
+	}
+
+	// -----------------------------
+	// Modifier Helper: Get Modifiers
+	// -----------------------------
+	// Returns modifier flags based on current mouse event.
+	getModifiers( e ) {
+		return {
+			alt	      : !!e.altKey,
+			shift     : !!e.shiftKey,
+			square    : !!( e.altKey && e.shiftKey ),
+			axisLock  : !!( e.shiftKey && !e.altKey ),
+			duplicate : !!( e.altKey && !e.shiftKey )
+			};
 	}
 
 	//-------------------------

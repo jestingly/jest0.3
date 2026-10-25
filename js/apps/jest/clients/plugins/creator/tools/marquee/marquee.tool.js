@@ -103,18 +103,39 @@ class JestToolMarquee extends JestTool {
 		// Restore the marquee selection state.
 		this.restoreSelectionState( this.getSelectionState() );
 	}
-	// Disable the marquee tool.
-	// RETURNS: [boolean] `true` on success else `false` on fail.
+
+	//--------------------------------
+	// Disable Marquee Tool
+	//--------------------------------
+	// Disable marquee interactions and clear its selection.
+	// Floating selections are dropped before switching tools.
+	// RETURNS: [boolean].
 	disable() {
-		// Check parent constructor.
+		//--------------------------------
+		// Validate Disable
+		//--------------------------------
 		if ( !super.disable() ) return false;
-		// Reset the selection.
-		//this.reset(); // deselect if selected
-		// Remove event listener(s)
-		this.removeTargetListeners();	// remove target events
-		this.removeGlobalListeners();	// remove window events
-		// Mark as disabled.
-		this.jot( 'enabled', false );	// disable selectability
+
+		//--------------------------------
+		// Clear Marquee Selection
+		//--------------------------------
+		// Drop any floating tiles and clear the selection.
+		// Preserve the existing history/event behavior.
+		//this.reset();
+
+		//--------------------------------
+		// Remove Event Listeners
+		//--------------------------------
+		// Remove mouse interaction listeners.
+		this.removeTargetListeners();
+		this.removeGlobalListeners();
+
+		//--------------------------------
+		// Mark Tool Disabled
+		//--------------------------------
+		this.jot( 'enabled', false );
+
+		return true;
 	}
 
 	// --------------------------------
@@ -197,10 +218,19 @@ class JestToolMarquee extends JestTool {
 	// RETURNS: [void].
 	// * e		- Event [object] from mouse click.
 	checkClick( e ) {
+		//-------------------------
+		// Check Keyboard Action
+		//-------------------------
+		// Get keyboard modifiers.
+		const mod		= this.getModifiers( e );
 		// Determine if shift key is pressed.
-		const add		= e.shiftKey;
+		const add		= mod.shift;
 		// Check for alt/option key.
-		const sub		= e.altKey;
+		const sub		= mod.alt;
+
+		//-------------------------
+		// Check Click Context
+		//-------------------------
 		// Determine if adding or subtracting.
 		const restart	= !( add || sub );
 		// Check if click is inside an active selection.
@@ -415,9 +445,11 @@ class JestToolMarquee extends JestTool {
 		// ------------------------------
 		// Compute rect & preserve action
 		// ------------------------------
+		// Get keyboard modifiers.
+		const mod		= this.getModifiers( e );
 		// Reset the marquee tool for new selection.
-		const isAdd		= e.shiftKey;
-		const isSub		= e.altKey;
+		const isAdd		= mod.shif;
+		const isSub		= mod.alt;
 		const isNew		= !( isAdd || isSub );
 		const action	= isAdd ? 'add'		// ⌘ Shift = additive
 							: isSub ? 'sub'	// ⌥ Option = subtractive
@@ -738,47 +770,55 @@ class JestToolMarquee extends JestTool {
 		const mode		= this.skim( 'mode' );
 		if ( !enabled || mode!=='dragging' ) return;
 		// Convert to tile coords
-		const mouse	= this.target.mousePos( e );
-		let tileX	= Math.floor( mouse.x/this.anchor.units );
-		let tileY	= Math.floor( mouse.y/this.anchor.units );
+		const mouse		= this.target.mousePos( e );
+		let tileX		= Math.floor( mouse.x/this.anchor.units );
+		let tileY		= Math.floor( mouse.y/this.anchor.units );
 		// Compute new top-left of the anchor so the relative offset remains
-		tileX		= tileX - this.grabOffsetX;
-		tileY		= tileY - this.grabOffsetY;
+		tileX			= tileX - this.grabOffsetX;
+		tileY			= tileY - this.grabOffsetY;
 		// Clamp so the entire box stays within [0..target.width) × [0..target.height)
-		/*const maxCols 	= this.target.width;
+		/*const maxCols = this.target.width;
 		const maxRows 	= this.target.height;
 		const boxW		= this.anchor.width;
 		const boxH		= this.anchor.height;*/
 
+		// Get keyboard modifiers.
+		const mod		= this.getModifiers( e );
 		// Axis lock modifier.
-		if ( e.shiftKey ) {
-			const dx = Math.abs( tileX - this.dragStartX );
-			const dy = Math.abs( tileY - this.dragStartY );
-			if ( dx > dy ) tileY = this.dragStartY; // lock Y
-			else tileX = this.dragStartX; // lock X
+		if ( mod.shift ) {
+			const dx	= Math.abs( tileX - this.dragStartX );
+			const dy	= Math.abs( tileY - this.dragStartY );
+			if ( dx>dy )
+				tileY	= this.dragStartY; // lock Y
+			else tileX	= this.dragStartX; // lock X
 		}
 
 		// Finally, move the anchor to the new position
 		if ( tileX!==this.anchor.x || tileY!==this.anchor.y ) {
 			this.anchor.move( tileX, tileY );		// move the anchor
-			this.bounds = this.anchor.getBounds();	// update live bounds
+			this.bounds	= this.anchor.getBounds();	// update live bounds
 		}
 	}
 
 	// Called on mouseup (or blur/contextmenu) to finish dragging.
 	endDragSelection( e ) {
+		//-------------------------
+		// Mode Gatekeep & Handling
+		//-------------------------
 		// Mode / enableability requirement
 		const enabled	= this.skim( 'enabled' );
 		const mode		= this.skim( 'mode' );
 		if ( !enabled || mode!=='dragging' ) return;
 		// Switch to "floating" (floated selection).
 		this.jot( 'mode', 'floating' );
+
 		//-------------------------
 		// Remove Event Listener(s)
 		//-------------------------
 		// Unregister the dragging mousemove & mouseup handlers
 		this.target.unregister( 'mousemove', 'dragging' );
 		this.removeGlobalListeners(); // remove window events
+
 		//-------------------------
 		// Emit Event(s)
 		//-------------------------
@@ -816,16 +856,15 @@ class JestToolMarquee extends JestTool {
 		this.emit( 'deselected', null, this );
 	}
 
-
 	// -----------------------------
 	// Modifier Helper: Get Modifiers
 	// -----------------------------
 	// Returns modifier flags based on current mouse event.
 	getModifiers( e ) {
 		return {
-			alt	   : !!e.altKey,
-			shift	 : !!e.shiftKey,
-			square	: !!( e.altKey && e.shiftKey ),
+			alt	      : !!e.altKey,
+			shift     : !!e.shiftKey,
+			square    : !!( e.altKey && e.shiftKey ),
 			axisLock  : !!( e.shiftKey && !e.altKey ),
 			duplicate : !!( e.altKey && !e.shiftKey )
 			};

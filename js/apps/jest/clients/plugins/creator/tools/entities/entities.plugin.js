@@ -1023,6 +1023,7 @@ console.log( 'jestAlert: js/apps/jest/clients/plugins/creator/tools/entities/ent
 					// Only if client is running.
 					const mode		= client.skim( 'mode' );
 					if ( mode!=='running' ) return;
+
 					//--------------------------------
 					// Check If File Open
 					//--------------------------------
@@ -1030,6 +1031,7 @@ console.log( 'jestAlert: js/apps/jest/clients/plugins/creator/tools/entities/ent
 					const state		= client.getState(); // get program state
 					const view		= state.levelView;
 					const key		= state.levelViewKey;
+
 					//--------------------------------
 					// Check If Update Possible
 					//--------------------------------x
@@ -1037,50 +1039,130 @@ console.log( 'jestAlert: js/apps/jest/clients/plugins/creator/tools/entities/ent
 					const toolMode	= tool.skim( 'mode' );
 					const enabled	= tool.skim( 'enabled' );
 					const toolbar	= curator.toolbar;
-					const visible	= curator.getVisibleOptions(); // get visible items
-					const selected	= curator.getSelectedObject();
+					const visible	= curator.getVisibleOptions();	// get visible items
+					const selected	= curator.getSelectedObject();	// get selected item
 					// Get curator object item information.
 					const form		= object ? object.display.target : null;
 					const data		= object ? object.data : null;
 					// Check to toggle various button(s).
 					let toggle		= false; // reusable toggle [bool]
 					switch ( type ) {
+						// Handle hook items list dropdown selected.
 						case 'hook':
 							//--------------------------------
 							// Enable Script Editor Box
 							//--------------------------------
 							// If an item is selected, allow script box.
-							if ( visible.length>0 )
+							if ( selected )
 								toolbar.toggle( 'expand', true );
 
 							//--------------------------------
 							// Enable Create
 							//--------------------------------
+							// Always allow creating a new hook.
 							toolbar.toggle( 'create', true );
 
 							//--------------------------------
 							// Enable Apply Only If Modified
 							//--------------------------------
-							// Compare editable fields against saved hook data.
-							const compare	= {
-								path	: 'path',
-								script	: 'script',
-								x		: 'x',
-								y		: 'y'
-								};
+							if ( selected ) {
+								// Compare editable fields against saved hook data.
+								const compare	= {
+									path	: 'path',
+									script	: 'script',
+									x		: 'x',
+									y		: 'y'
+									};
 
-							// Enable Apply only when an editable hook has changes.
-							const changed	=
-								form && data && data.readonly!==true
-								&& form.checkFieldMismatches( data, compare );
+								// Enable Apply only when an editable hook has changes.
+								const changed	=
+									form && data && data.readonly!==true
+									&& form.checkFieldMismatches( data, compare );
+								// Enable the apply button.
+								toolbar.toggle( 'apply', Boolean(changed) );
+							}
 
-							toolbar.toggle( 'apply', Boolean(changed) );
+							//--------------------------------
+							// Handle File Menu Button(s)
+							//--------------------------------
+							// Allow copy, cut and delete.
+							if ( selected && tool.enabled() ) {
+								client.filemenu.toggle( 'copy', true );		// copy is allowed
+								client.filemenu.toggle( 'cut', true );		// cut is allowed
+								client.filemenu.toggle( 'delete', true );	// delete is allowed
+							}
 							break;
 
+						// Unknown dropdown list selected.
 						default:
+							// Disable the apply button.
 							toolbar.toggle( 'apply', false );
 							break;
 					}
+				});
+
+			//-------------------------
+			// Entity Copy/Paste/Cut/Delete Functionality
+			//-------------------------
+			// Register entity clipboard operations through
+			// the application's existing file menu events.
+			//-------------------------
+			// Copy the selected hook into JEST's clipboard.
+			client.register(
+				'copy', subtype,
+				() => {
+					//--------------------------------
+					// Check If Delete Possible
+					//--------------------------------
+					// Block unavailable application states.
+					if ( client.busy() ) return;
+					if ( client.skim('mode')!=='running' ) return;
+					// Only copy when the entities tool is active.
+					if ( !tool.enabled() ) return;
+					//--------------------------------
+					// Attempt to Copy
+					//--------------------------------
+					// Copy the currently selected entity.
+					client.copySelectedHook( tool );
+				});
+
+			// Paste a previously copied entity into the
+			// center of the visible level viewport.
+			client.register(
+				'paste', subtype,
+				( snapshot ) => {
+					// Only handle entity clipboard data.
+					if ( snapshot?.action!=='levelHook' ) return;
+					//--------------------------------
+					// Check If Paste Possible
+					//--------------------------------
+					// Block unavailable application states.
+					if ( client.busy() ) return;
+					if ( client.skim('mode')!=='running' ) return;
+					//--------------------------------
+					// Attempt to Paste
+					//--------------------------------
+					// Paste the entity using its stored properties.
+					client.pasteCopiedHook( tool, snapshot );
+				});
+
+			// Remove the selected hook from the active level.
+			client.register(
+				'delete', subtype,
+				() => {
+					//--------------------------------
+					// Check If Delete Possible
+					//--------------------------------
+					// Block unavailable application states.
+					if ( client.busy() ) return;
+					if ( client.skim('mode')!=='running' ) return;
+					// Only delete when the entities tool is active.
+					if ( !tool.enabled() ) return;
+					//--------------------------------
+					// Attempt to Delete
+					//--------------------------------
+					// Remove the currently selected entity.
+					client.removeSelectedHook( tool );
 				});
 
 			//-------------------------
@@ -1503,7 +1585,6 @@ console.log( 'jestAlert: js/apps/jest/clients/plugins/creator/tools/entities/ent
 				// Cleanup Image Callback
 				//--------------------------------
 				// Remove completed callback.
-				console.log( image );
 				const ukey	= `displayHook:${object.skey}`;
 				if ( image.isRegistered('drawn',ukey) )
 					image.unregister( 'drawn', ukey );
@@ -1545,9 +1626,6 @@ console.log( 'jestAlert: js/apps/jest/clients/plugins/creator/tools/entities/ent
 				//--------------------------------
 				// Register Image Loading Callback
 				//--------------------------------
-				/*HERE*/
-				console.log( image );
-				console.log( object.data );
 				// Generate a unique callback identifier.
 				const ukey	= `displayHook:${object.skey}`;
 				// Register a callback for when the image is ready.
@@ -1634,6 +1712,234 @@ console.log( 'jestAlert: js/apps/jest/clients/plugins/creator/tools/entities/ent
 				//--------------------------------
 				// Force curator to reflect freshly filtered group(s).
 				this.refreshCurator( tool ); // refresh curator*/
+			}
+
+
+			//--------------------------------
+			// Get Selected Entity
+			//--------------------------------
+			// Resolve the selected entity against the active level.
+			// Prevent editing entities belonging to another file.
+			// RETURNS: [JestCuratorObject|null].
+			// * tool		- [JestToolEntities] emitting the event.
+			proto.getSelectedHook = function( tool ) {
+				// Gatekeep with file status check.
+				let s; if ( !(s=this.getFileStatus(tool,true)) ) return false; // abort
+
+				//--------------------------------
+				// Get Select Curator Hook Item(s)
+				//--------------------------------
+				// Prefer the canvas selection, falling back to the sidebar.
+				const id		= tool.selected?.data?.id ?? s.curator.selectBox.getValue();
+				const object	= s.curator.objects[id] ?? null;
+				// Require an entity belonging to the active level.
+				if ( !object || object.data.file!==s.fileKey ) return null;
+				// Do not modify read-only entities.
+				if ( object.data.readonly===true ) return null;
+				return object; // return selected item
+			}
+
+			//--------------------------------
+			// Mark Entity Changes
+			//--------------------------------
+			// Notify the level that its contents have changed.
+			// RETURNS: [void].
+			// * tool		- [JestToolEntities] emitting the event.
+			proto.markEntityChanged = function( tool ) {
+				// Gatekeep with file status check.
+				let s; if ( !(s=this.getFileStatus(tool,true)) ) return false; // abort
+
+				//--------------------------------
+				// Mark File as Changed (for saveability)
+				//--------------------------------
+				// Mark the level as modified.
+				s.file.jot( 'changed', true );
+			}
+
+			//--------------------------------
+			// Remove Selected Entity
+			//--------------------------------
+			// Delete the selected entity using the existing
+			// hook removal system.
+			// RETURNS: [boolean].
+			// * tool		- [JestToolEntities] emitting the event.
+			proto.removeSelectedHook = function( tool ) {
+				// Gatekeep with file status check.
+				let s; if ( !(s=this.getFileStatus(tool,true)) ) return false; // abort
+
+				//--------------------------------
+				// Access Selected Hook Item
+				//--------------------------------
+				// Retrieve the selected hook using the active tool.
+				const object	= this.getSelectedHook( tool );
+				if ( !object ) return false; // fail
+
+				//--------------------------------
+				// Remove Hook Via Curator
+				//--------------------------------
+				// Remove the entity through the existing API.
+				const removed	= this.removeHook( tool, object.data.id );
+				if ( !removed ) return false; // fail
+
+				//--------------------------------
+				// Deselect Deleted Item
+				//--------------------------------
+				// Clear the selection through the tool's existing API.
+				// This also emits the 'deselected' event for listeners.
+				tool.deselect();
+
+				//--------------------------------
+				// Refresh Curator & Mark Changed
+				//--------------------------------
+				// Refresh the sidebar.
+				this.refreshCurator( tool, false );
+				// Mark the active level as modified.
+				this.markEntityChanged( tool );
+				return true; // success
+			}
+
+			//--------------------------------
+			// Copy Selected Entity
+			//--------------------------------
+			// Copy the selected entity's editable properties.
+			// Excludes its unique ID and runtime image object.
+			// RETURNS: [boolean].
+			// * tool		- [JestToolEntities] emitting the event.
+			proto.copySelectedHook = function( tool ) {
+				// Gatekeep with file status check.
+				let s; if ( !(s=this.getFileStatus(tool,true)) ) return false; // abort
+
+				//--------------------------------
+				// Access Selected Hook Item
+				//--------------------------------
+				// Retrieve the selected hook using the active tool.
+				const object	= this.getSelectedHook( tool );
+				if ( !object ) return false;
+				// Retrieve entity properties.
+				const data		= object.data;
+
+				//--------------------------------
+				// Log Essential Data For Clipboard
+				//--------------------------------
+				// Create log of entity data.
+				const log		= {
+					action : "levelHook",
+					path   : data.path   ?? '',
+					script : data.script ?? '',
+					x: Number(data.x) || 0,
+					y: Number(data.y) || 0
+					};
+
+				//--------------------------------
+				// Log Clipboard Data For Paste
+				//--------------------------------
+				// Log item to application clipboard.
+				this.governor.log( 'clipboard', log );
+				// Enable application pasting.
+				this.filemenu.toggle( 'paste', true );
+
+				//--------------------------------
+				// Log Entity Clipboard Operation
+				//--------------------------------
+				// Report the copied entity's identity, location,
+				// script length, and clipboard snapshot.
+				console.groupCollapsed(
+					`📋 JEST Entities: Copied Hook #${data.id} (${data.path||'No Image'})` );
+				// Identify the source entity.
+				console.log( 'Entity ID:', data.id );
+				console.log( 'Source Level:', data.file );
+				// Report the entity's original position.
+				console.log( 'Position:', { x: log.x, y: log.y } );
+				// Report the copied properties.
+				console.log( 'Image Path:', log.path );
+				console.log( 'Script Length:', log.script.length, 'characters' );
+				// Display the actual clipboard snapshot.
+				console.log( 'Clipboard Snapshot:', log );
+				// Close the grouped console output.
+				console.groupEnd();
+				// Save a copy of its editable data.
+				return true; // success
+			}
+
+			//--------------------------------
+			// Paste Copied Entity
+			//--------------------------------
+			// Create a new entity using the copied properties.
+			// Offset its position by one tile so that the
+			// duplicate is distinguishable from the original.
+			// RETURNS: [Promise<boolean>].
+			// * tool		- [JestToolEntities] emitting the event.
+			// * snapshot	- [object] With action, region matrix tile data, etc.
+			proto.pasteCopiedHook = async function( tool, snapshot ) {
+				// Gatekeep with file status check.
+				let s; if ( !(s=this.getFileStatus(tool,true)) ) return false; // abort
+
+				//--------------------------------
+				// Access Selected Hook Item
+				//--------------------------------
+				// Only accept entity clipboard snapshots.
+				// Return false when another editor tool owns the clipboard.
+				if ( snapshot?.action!=='levelHook' ) return false;
+
+				//--------------------------------
+				// Calculate Visible Canvas Center
+				//--------------------------------
+				// Retrieve the center of the currently visible
+				// level viewport in logical tile coordinates.
+				const units		= this.config.tileGrid;
+				const center	= this.getVisibleLevelCenter( units );
+
+				//--------------------------------
+				// Prepare Pasted Entity
+				//--------------------------------
+				// Position the new entity at the visible center.
+				// Preserve its copied script and image path.
+				const data	= {
+					path	: snapshot.path ?? '',
+					script	: snapshot.script ?? '',
+					x		: Math.round( center.x*4 ) / 4,
+					y		: Math.round( center.y*4 ) / 4
+					};
+
+				//--------------------------------
+				// Create New Hook Item
+				//--------------------------------
+				// Create a new entity with its own ID.
+				const object = this.addHook( tool, data );
+				if ( !object ) return false;
+				// Rebuild the entity's image preview.
+				if ( data.path )
+					await this.setHookImage( tool, object, data.path );
+				// Update the curator's displayed label.
+				s.curator.updateOptionLabel( object.data.id, data.path || '' );
+
+				//--------------------------------
+				// Refresh Curator & Autoselect
+				//--------------------------------
+				// Refresh the entity list.
+				this.refreshCurator( tool, false );
+				// Select the newly pasted entity.
+				s.curator.select( object.data.id );
+				tool.select( null, object );
+
+				//--------------------------------
+				// Switch to Entities Tool (for convenience)
+				//--------------------------------
+				// Switch to the entities tool.
+				this.toolbox.setTool( 'entities' );
+
+				//--------------------------------
+				// Mark Entity Changed
+				//--------------------------------
+				// Mark the active level as modified.
+				this.markEntityChanged( tool ) ;
+
+				//--------------------------------
+				// Emit Event & Return
+				//--------------------------------
+				// Emit pasted event(s).
+				this.emit( 'pasted' ); // send signal
+				return true; // susccess
 			}
 		}
 	};
